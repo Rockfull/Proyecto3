@@ -1,17 +1,18 @@
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Map;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.Queue;
 
 public class Estacionamiento {
     private final int TAMANO = 6;
     private final int[][] celdas; // -1 = vacío, de lo contrario ID del vehículo
     private volatile boolean simulacionTerminada = false;
     private final Map<Integer, Vehiculo> vehiculos; // Mapa para el metodo estacionamiento
+    private final Queue<Integer> colaRecarga; // Cola para vehículos que necesitan recarga
 
     public Estacionamiento() {
         celdas = new int[TAMANO][TAMANO];
+        colaRecarga = new LinkedList<>(); // inicializamos la cola
         for (int i = 0; i < TAMANO; i++) {
             for (int j = 0; j < TAMANO; j++) {
                 celdas[i][j] = -1;
@@ -103,9 +104,18 @@ public class Estacionamiento {
 
     // metodo esperar recarga
     public synchronized void esperarRecarga(Vehiculo v) throws InterruptedException {
+        /*
+         * Marcos: Modifique esta parte para tener una lista de vehiculos que necesitan
+         * recarga y de ese modo se evita estar verificando a todos los vehiculos y se
+         * recargan en orden
+         */
+        colaRecarga.add(v.getId()); // Agregar vehículo a la cola de recarga
+
         while (v.getBateria() == 0 && !simulacionTerminada) {
             wait();
         }
+
+        colaRecarga.remove(v.getId()); // Eliminar vehículo de la cola al despertar
     }
 
     // Para que los vehículos notifiquen a los cargadores cuando se quedan sin
@@ -123,8 +133,10 @@ public class Estacionamiento {
 
     public synchronized void recargarEnergia() throws InterruptedException {
         while (!simulacionTerminada) {
-            for (Vehiculo v : vehiculos.values()) {
-                if (v.getBateria() == 0) {
+            if (!colaRecarga.isEmpty()) {
+                int idVehiculo = colaRecarga.peek(); // Obtener el ID del vehículo al frente de la cola
+                Vehiculo v = vehiculos.get(idVehiculo); // Obtener el vehículo del mapa
+                if (v != null && v.getBateria() == 0) {
                     v.setBateria(10);
                     System.out.println("Cargador recargó vehículo " + v.getId());
                     notifyAll(); // Despierta a los vehiculos que esperaban recarga
@@ -132,7 +144,14 @@ public class Estacionamiento {
                 }
             }
             // No hay vehiculos sin batería, esperar
-            wait();
+            while (colaRecarga.isEmpty() && !simulacionTerminada) {
+                /*
+                 * Marcos: Le agregue esta condición a recarga, ya que al hacer notifyAll, se
+                 * despiertan
+                 * todos y si no hay vehiculos que recargar se queda dormido
+                 */
+                wait();
+            }
         }
     }
 
