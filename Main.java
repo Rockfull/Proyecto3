@@ -16,13 +16,13 @@ public class Main {
         List<Vehiculo> vehiculos = new ArrayList<>();
         int numCargadores = 0;
 
-        // AQUI el archivo línea por línea
+        // AQUI leemos el archivo
         try (BufferedReader br = new BufferedReader(new FileReader(archivo))) {
             String linea;
             while ((linea = br.readLine()) != null) {
                 linea = linea.trim();
                 if (linea.isEmpty())
-                    continue; // saltar si hay lineas vacias
+                    continue; // salta si hay lineas vacias
 
                 String[] partes = linea.split("\\s+");
                 // Si tiene 6 campos es un vehiculo(Validamos que es un vehiculo)
@@ -38,7 +38,7 @@ public class Main {
                         Vehiculo v = new Vehiculo(id, orientacion, fila, columna, longitud, bateria);
                         vehiculos.add(v);
                     } catch (NumberFormatException e) {
-                        System.err.println("Error numérico en línea: " + linea);
+                        System.err.println("Error numerico en linea: " + linea);
                     }
                 }
                 // Si tiene 1 campo es la cantidad de cargadores
@@ -98,8 +98,6 @@ public class Main {
         }
 
         // Esperamos a que el vehiculo objetivo (ID 0) termine
-        // (los demás vehículos se detendrán cuando el monitor indique fin de
-        // simulacion)
         try {
             // Buscamos el hilo del vehiculo con ID 0
             for (int i = 0; i < vehiculos.size(); i++) {
@@ -112,17 +110,15 @@ public class Main {
             Thread.currentThread().interrupt();
         }
 
-        // Indicar al estacionamiento que la simulación terminó (para que los demás
-        // hilos finalicen)
+        // Indicar al estacionamiento que la simulación terminó
+        //Finalizan Hilos
         estacionamiento.terminarSimulacion();
 
-        // Esperar un poco a que los demás hilos reaccionen (opcional)
+        // Esperar un poco a que los demas hilos reaccionen (opcional)
         try {
             Thread.sleep(500);
-        } catch (InterruptedException e) {
-            // ignore
-        }
+        } catch (InterruptedException e) {}
 
-        System.out.println("Simulación finalizada.");
+        System.out.println("Simulacion finalizada.");
     }
 }

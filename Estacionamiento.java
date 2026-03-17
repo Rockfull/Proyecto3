@@ -1,18 +1,14 @@
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.Map;
-import java.util.Queue;
 
 public class Estacionamiento {
     private final int TAMANO = 6;
-    private final int[][] celdas; // -1 = vacío, de lo contrario ID del vehículo
+    private final int[][] celdas; // -1 = vacio, de lo contrario ID del vehiculo
     private volatile boolean simulacionTerminada = false;
     private final Map<Integer, Vehiculo> vehiculos; // Mapa para el metodo estacionamiento
-    private final Queue<Integer> colaRecarga; // Cola para vehículos que necesitan recarga
 
     public Estacionamiento() {
         celdas = new int[TAMANO][TAMANO];
-        colaRecarga = new LinkedList<>(); // inicializamos la cola
         for (int i = 0; i < TAMANO; i++) {
             for (int j = 0; j < TAMANO; j++) {
                 celdas[i][j] = -1;
@@ -21,137 +17,80 @@ public class Estacionamiento {
         vehiculos = new HashMap<>(); // inicializamos el mapa
     }
 
-    // Registrar un vehículo en sus posiciones iniciales
+    // Métodos auxiliares privados
+    private void actualizarCeldas(Vehiculo v, int valor) {
+        for (int i = 0; i < v.getLongitud(); i++) {
+            int f = v.getFila() + (v.getOrientacion() == 'V' ? i : 0);
+            int c = v.getColumna() + (v.getOrientacion() == 'H' ? i : 0);
+            celdas[f][c] = valor;
+        }
+    }
+
     public synchronized void colocarVehiculoInicial(Vehiculo v) {
-        vehiculos.put(v.getId(), v); // Para almacenar los vehiculos
-        int fila = v.getFila();
-        int col = v.getColumna();
-        int lon = v.getLongitud();
-        char orient = v.getOrientacion();
-
-        for (int i = 0; i < lon; i++) {
-            int f = fila + (orient == 'V' ? i : 0);
-            int c = col + (orient == 'H' ? i : 0);
-            if (f < TAMANO && c < TAMANO) {
-                celdas[f][c] = v.getId();
-            } else {
-                System.err.println("Posición fuera de rango para vehículo " + v.getId());
-            }
-        }
-    }
-
-    private void liberarCeldas(int fila, int columna, char orientacion, int longitud, int id) {
-        for (int i = 0; i < longitud; i++) {
-            int f = fila + (orientacion == 'V' ? i : 0);
-            int c = columna + (orientacion == 'H' ? i : 0);
-            celdas[f][c] = -1;
-        }
-    }
-
-    private void ocuparCeldas(int fila, int columna, char orientacion, int longitud, int id) {
-        for (int i = 0; i < longitud; i++) {
-            int f = fila + (orientacion == 'V' ? i : 0);
-            int c = columna + (orientacion == 'H' ? i : 0);
-            celdas[f][c] = id;
-        }
+        vehiculos.put(v.getId(), v); // Lo guarda en el mapa para los cargadores
+        actualizarCeldas(v, v.getId()); // Lo dibuja en la matriz inicial
     }
 
     public synchronized boolean moverVehiculo(Vehiculo v, int deltaFila, int deltaColumna) throws InterruptedException {
-        int filaActual = v.getFila();
-        int colActual = v.getColumna();
-        char orient = v.getOrientacion();
+        if (simulacionTerminada)
+            return false;
+        int nuevaFila = v.getFila() + deltaFila;
+        int nuevaCol = v.getColumna() + deltaColumna;
         int lon = v.getLongitud();
+        char orient = v.getOrientacion();
 
-        // Calcular nueva posición (esquina superior izquierda)
-        int nuevaFila = filaActual + deltaFila;
-        int nuevaCol = colActual + deltaColumna;
+        // Validar limites en la matriz 6x6
+        if (nuevaFila < 0 || nuevaCol < 0)
+            return false;
+        if (v.getOrientacion() == 'V' && nuevaFila + lon > 6)
+            return false;
+        if (v.getOrientacion() == 'H' && nuevaCol + lon > 6)
+            return false;
 
-        // Verificar límites (que no se salga del tablero)
-        int filaFinal = nuevaFila + (orient == 'V' ? lon - 1 : 0);
-        int colFinal = nuevaCol + (orient == 'H' ? lon - 1 : 0);
-        if (filaFinal >= TAMANO || colFinal >= TAMANO) {
-            return false; // No se puede mover fuera
+        // Verificar si las celdas estan ocupadas
+        // Chequeo la celda hacioa donde se mueve para ser eficiente
+        int filaChequeo = (deltaFila > 0) ? nuevaFila + lon - 1 : nuevaFila;
+        int colChequeo = (deltaColumna > 0) ? nuevaCol + lon - 1 : nuevaCol;
+
+        if (celdas[filaChequeo][colChequeo] != -1 && celdas[filaChequeo][colChequeo] != v.getId()) {
+            return false; // Bloqueado por otro auto
         }
-
-        // Esperar hasta que todas las celdas destino estén libres
-        while (true) {
-            boolean libre = true;
-            for (int i = 0; i < lon; i++) {
-                int f = nuevaFila + (orient == 'V' ? i : 0);
-                int c = nuevaCol + (orient == 'H' ? i : 0);
-                int idActual = celdas[f][c];
-                // Permitir si está libre o es ocupada por el mismo vehículo
-                if (idActual != -1 && idActual != v.getId()) {
-                    libre = false;
-                    break;
-                }
-            }
-            if (libre)
-                break;
-            wait();
-            if (simulacionTerminada)
-                return false;
-        }
-
-        // Mover: liberar celdas viejas y ocupar nuevas
-        liberarCeldas(filaActual, colActual, orient, lon, v.getId());
-        ocuparCeldas(nuevaFila, nuevaCol, orient, lon, v.getId());
-        v.setPosicion(nuevaFila, nuevaCol);
-
-        notifyAll(); // Notificar a otros hilos que esperan
+        // Ejecutar Movimiento
+        actualizarCeldas(v, -1); // Limpiar donde estaba
+        v.setPosicion(nuevaFila, nuevaCol); // Actualizar objeto
+        actualizarCeldas(v, v.getId()); // Ocupar nuevo lugar
+        notifyAll(); // Notificar a otros hilos que la tabla cambio
         return true;
     }
 
     // metodo esperar recarga
     public synchronized void esperarRecarga(Vehiculo v) throws InterruptedException {
-        /*
-         * Marcos: Modifique esta parte para tener una lista de vehiculos que necesitan
-         * recarga y de ese modo se evita estar verificando a todos los vehiculos y se
-         * recargan en orden
-         */
-        colaRecarga.add(v.getId()); // Agregar vehículo a la cola de recarga
-
-        while (v.getBateria() == 0 && !simulacionTerminada) {
+        while (v.getBateria() <= 0 && !simulacionTerminada) {
             wait();
         }
-
-        colaRecarga.remove(v.getId()); // Eliminar vehículo de la cola al despertar
     }
 
-    // Para que los vehículos notifiquen a los cargadores cuando se quedan sin
-    // batería
+    // Para que los vehiculos notifiquen a los cargadores
     public synchronized void avisarVehiculoSinBateria() {
-        notifyAll(); // Despierta a los cargadores que estén esperando
+        notifyAll(); // Despierta a los cargadores que estn esperando
     }
-
-    // public synchronized boolean recargarVehiculo(Vehiculo v) {
-    // Esperar mientras la simulación no termine y la celda destino esté ocupada
-    // Calcular nueva posición, verificar límites, etc.
-    // Usar wait() si la celda destino está ocupada
-    // Al final, liberar celdas viejas y ocupar nuevas, y notificar
-    // }
 
     public synchronized void recargarEnergia() throws InterruptedException {
         while (!simulacionTerminada) {
-            if (!colaRecarga.isEmpty()) {
-                int idVehiculo = colaRecarga.peek(); // Obtener el ID del vehículo al frente de la cola
-                Vehiculo v = vehiculos.get(idVehiculo); // Obtener el vehículo del mapa
-                if (v != null && v.getBateria() == 0) {
+            boolean alguienRecargado = false;
+            for (Vehiculo v : vehiculos.values()) {
+                if (v.getBateria() <= 0) {
                     v.setBateria(10);
                     System.out.println("Cargador recargó vehículo " + v.getId());
                     notifyAll(); // Despierta a los vehiculos que esperaban recarga
-                    return;
+                    alguienRecargado = true;
                 }
             }
-            // No hay vehiculos sin batería, esperar
-            while (colaRecarga.isEmpty() && !simulacionTerminada) {
-                /*
-                 * Marcos: Le agregue esta condición a recarga, ya que al hacer notifyAll, se
-                 * despiertan
-                 * todos y si no hay vehiculos que recargar se queda dormido
-                 */
-                wait();
+            if (alguienRecargado) {
+                notifyAll(); // Despertar a los vehiculos que esperaban carga
+                return;
             }
+            wait(); // No hay nadie que cargar se duerme
         }
     }
 
@@ -164,5 +103,4 @@ public class Estacionamiento {
         notifyAll(); // despertar hilos que puedan estar esperando
     }
 
-    // Otros métodos
 }

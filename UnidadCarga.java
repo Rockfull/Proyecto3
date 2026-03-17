@@ -14,7 +14,7 @@ public class UnidadCarga implements Runnable {
         while (!estacionamiento.simulacionTerminada() && activo) {
             try {
                 estacionamiento.recargarEnergia();
-                // Pequeña pausa para no saturar el monitor
+                // Pequeña pausa para no saturar monitor
                 Thread.sleep(100);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
